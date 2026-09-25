@@ -1,0 +1,83 @@
+name: Bump plasma manifest
+
+# Polls PLASMA's GitHub Releases for a new tagged (non-prerelease) version
+# and opens a PR here bumping bucket/plasma.json's version + url + hash.
+# Runs entirely inside this repo, using its own default GITHUB_TOKEN — no
+# cross-repo PAT needed, unlike automating this from PLASMA's own CI would.
+#
+# `plasma-nightly` needs none of this: it tracks a fixed release tag
+# (`nightly`) with "version": "nightly" (Scoop skips the hash check for
+# that), so there's nothing to bump there, ever.
+
+on:
+  schedule:
+    - cron: '0 13 * * *'   # once a day; irrelevant how often since it's a no-op when nothing changed
+  workflow_dispatch:        # trigger manually right after cutting a PLASMA release, instead of waiting
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check latest PLASMA release
+        id: release
+        run: |
+          # GitHub's /releases/latest already excludes prereleases and drafts,
+          # so this naturally skips the rolling "nightly" prerelease tag.
+          LATEST_TAG="$(curl -fsSL https://api.github.com/repos/YuyiChang/PLASMA/releases/latest | jq -r .tag_name)"
+          LATEST_VERSION="${LATEST_TAG#v}"
+          CURRENT_VERSION="$(jq -r .version bucket/plasma.json)"
+          echo "latest=$LATEST_VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
+            echo "up to date ($CURRENT_VERSION) — nothing to do"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "bumping $CURRENT_VERSION -> $LATEST_VERSION"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute new hash
+        if: steps.release.outputs.changed == 'true'
+        id: sha
+        run: |
+          URL="https://github.com/YuyiChang/PLASMA/releases/download/v${{ steps.release.outputs.latest }}/PLASMA_Windows_x64.zip"
+          curl -fsSL -o app.zip "$URL"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum app.zip | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          rm app.zip
+
+      - name: Bump bucket/plasma.json
+        if: steps.release.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.release.outputs.latest }}
+          URL: ${{ steps.sha.outputs.url }}
+          SHA256: ${{ steps.sha.outputs.sha256 }}
+        run: |
+          # --indent 4 matches Scoop's own manifest formatting, so the PR
+          # diff is just the three changed values.
+          jq --indent 4 \
+            '.version = env.VERSION
+             | .architecture."64bit".url = env.URL
+             | .architecture."64bit".hash = env.SHA256' \
+            bucket/plasma.json > bucket/plasma.json.new
+          mv bucket/plasma.json.new bucket/plasma.json
+
+      - name: Open PR
+        if: steps.release.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "plasma ${{ steps.release.outputs.latest }}"
+          title: "plasma ${{ steps.release.outputs.latest }}"
+          body: |
+            Auto-bump from [PLASMA v${{ steps.release.outputs.latest }}](https://github.com/YuyiChang/PLASMA/releases/tag/v${{ steps.release.outputs.latest }}).
+
+            hash computed from that release's `PLASMA_Windows_x64.zip`.
+            Review before merging — this only checks that the version
+            changed, not that the new build is actually good.
+          branch: bump-plasma-${{ steps.release.outputs.latest }}
+          delete-branch: true
