@@ -1,5 +1,5 @@
 {
-    "version": "2.2.3",
+    "version": "2.3.0",
     "description": "Platform for LSL-based Acquisition of Sensor Metrics and Analytics",
     "homepage": "https://github.com/YuyiChang/PLASMA",
     "license": "MIT",
@@ -13,8 +13,8 @@
     ],
     "architecture": {
         "64bit": {
-            "url": "https://github.com/YuyiChang/PLASMA/releases/download/v2.2.3/PLASMA_Windows_x64.zip",
-            "hash": "47dc0abd9f3f56a6e671f8aeca52888fcbc658355911cfbaaff89f45ebf324fb"
+            "url": "https://github.com/YuyiChang/PLASMA/releases/download/v2.3.0/PLASMA_Windows_x64.zip",
+            "hash": "63ad00f3c546bd19dfda6390de5fafeb05ff2a5d2e100795e09df0ca10aeb557"
         }
     },
     "bin": [
